@@ -13,8 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @AllArgsConstructor
 @RestController
@@ -30,7 +33,7 @@ public class UserController {
         if(!Set.of("name", "email").contains(sort))
             sort = "id";
 
-        var users = userRepository.findAll(Sort.by(sort))
+        var users = userRepository.findAllWithProfile(Sort.by(sort))
                 .stream()
                 .map(userMapper::toDto)
                 .toList();
@@ -53,10 +56,29 @@ public class UserController {
     }
 
     @PostMapping
-    public ResponseEntity<UserDto> createUser(
+    public ResponseEntity<?> createUser(
             @RequestBody RegisterUserRequest request,
             UriComponentsBuilder uriBuilder
     ) {
+        boolean emailExists = userRepository.existsByEmailIgnoreCase(request.getEmail());
+        if(emailExists) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "Email has been used.");
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        var password = request.getPassword();
+        // real check
+        // var passwordPattern = Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&=(){}])[A-Za-z\\d@$!%*?&=(){}]{8,20}$");
+        var passwordPattern = Pattern.compile("^(123456|(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&=(){}])[A-Za-z\\d@$!%*?&=(){}\\[\\]]{8,20})$");
+        if(!passwordPattern.matcher(password).matches()) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "Password is incorrect.");
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
         var user = userMapper.toEntity(request);
         userRepository.save(user);
 
@@ -83,18 +105,22 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable Long id) {
         var user = userRepository.findById(id).orElse(null);
         if(user == null) {
             return ResponseEntity.notFound().build();
         }
 
         userRepository.delete(user);
-        return ResponseEntity.noContent().build();
+
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "User has been deleted.");
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/change-password")
-    public ResponseEntity<Void> changePassword(
+    public ResponseEntity<Map<String, String>> changePassword(
             @PathVariable Long id,
             @RequestBody ChangePasswordRequest request) {
         var user = userRepository.findById(id).orElse(null);
@@ -109,6 +135,9 @@ public class UserController {
         user.setPassword(request.getNewPassword());
         userRepository.save(user);
 
-        return ResponseEntity.noContent().build();
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Password has been changed.");
+
+        return ResponseEntity.ok(response);
     }
 }
